@@ -10,5 +10,6 @@
     <li><a href="print_details_att_dept.php" class="text-white">Print Attendance Statement</a></li>
     <li><a href="assign_fvc.php" class="text-white">Assign Faculty to Course</a></li>
     <li><a href="remmu_details.php" class="text-white">Generate Remmuneration Statement</a></li>
+    <li><a href="upload_students_multi_courses.php" class="text-white">upload_students_multi_courses</a></li>
     <li><a href="logout.php" class="text-white">Logout</a></li>
 </ul>

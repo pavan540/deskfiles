@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'connection.php';
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 /* ============================== Auth ============================== */
 if (!isset($_SESSION['faculty_id'])) {
@@ -11,28 +12,6 @@ $logged_in_faculty_id = $_SESSION['faculty_id'];
 
 date_default_timezone_set('Asia/Kolkata');
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-
-/** Map full department names to short codes (used for student.branch & svc.dept) */
-function dept_short_from_name($name){
-    static $map = [
-        'Information Technology' => 'IT',
-        'Computer Science and Engineering' => 'CSE',
-        'Electronics and Communication Engineering' => 'ECE',
-        'Electrical and Electronics Engineering' => 'EEE',
-        'Mechanical Engineering' => 'ME',
-        'Civil Engineering' => 'CE',
-        'Chemistry' => 'CHEM',
-        'Mathematics' => 'MATH',
-        'Physics' => 'PHY',
-        'Computer Applications' => 'CA',
-        'Business Administration' => 'BA',
-        'Arts & Commerce' => 'A&C',
-        'Master of Law' => 'LAW',
-        'English' => 'ENG',
-        'Electronics and Instrumentation Engineering' => 'EIE',
-    ];
-    return $map[$name] ?? strtoupper(substr($name, 0, 3));
-}
 
 /* ============================== AJAX ============================== */
 if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
@@ -47,7 +26,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
             $prog_opts = "<option value=''>-- Select Programme --</option>";
 
             if ($sid > 0) {
-                $q = $GLOBALS['conn']->prepare("SELECT dept_id, dept_name FROM departments WHERE school_id=? ORDER BY dept_name");
+                $q = $conn->prepare("SELECT dept_id, dept_name FROM departments WHERE school_id=? ORDER BY dept_name");
                 $q->bind_param("i", $sid);
                 $q->execute();
                 $r = $q->get_result();
@@ -56,7 +35,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
                 }
                 $q->close();
 
-                $p = $GLOBALS['conn']->prepare("SELECT programme_id, programme_name FROM programmes WHERE school_id=? ORDER BY programme_name");
+                $p = $conn->prepare("SELECT programme_id, programme_name FROM programmes WHERE school_id=? ORDER BY programme_name");
                 $p->bind_param("i", $sid);
                 $p->execute();
                 $rp = $p->get_result();
@@ -77,7 +56,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
             $prog_opts = "<option value=''>-- Select Programme --</option>";
 
             if ($sid > 0 && $did > 0) {
-                $p = $GLOBALS['conn']->prepare("SELECT programme_id, programme_name FROM programmes WHERE school_id=? AND dept_id=? ORDER BY programme_name");
+                $p = $conn->prepare("SELECT programme_id, programme_name FROM programmes WHERE school_id=? AND dept_id=? ORDER BY programme_name");
                 $p->bind_param("ii", $sid, $did);
                 $p->execute();
                 $rp = $p->get_result();
@@ -90,46 +69,54 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
             exit;
         }
 
-        // 3) Sections suggestions
-        // 3) Sections suggestions - ALWAYS show default 1–10
-if ($mode === 'sections') {
-    $sections = [];
-    for ($i = 1; $i <= 10; $i++) {
-        $sections[(string)$i] = true;
-    }
+        // 3) Sections suggestions - dynamic from svc (use dept_id)
+        if ($mode === 'sections') {
+            $course_id = trim($_GET['course_id'] ?? '');
+            $dept_id   = (int)($_GET['dept_id'] ?? 0);
+            $AY        = trim($_GET['AY'] ?? '');
 
-    $opts = "<option value=''>-- Select Section --</option>";
-    foreach (array_keys($sections) as $sec) {
-        $opts .= "<option value='".h($sec)."'>".h($sec)."</option>";
-    }
-
-    echo json_encode(['ok'=>true, 'sections'=>$opts]);
-    exit;
-}
-
+            $opts = "<option value=''>-- Select Section --</option>";
+            if ($course_id !== '' && $dept_id > 0 && $AY !== '') {
+                $stmt = $conn->prepare("
+                    SELECT DISTINCT section FROM svc
+                    WHERE course_id=? AND dept=? AND AY=?
+                    ORDER BY section
+                ");
+                // types: course_id (s), dept (i), AY (s)
+                $stmt->bind_param("sis", $course_id, $dept_id, $AY);
+                $stmt->execute();
+                $res = $stmt->get_result();
+                while ($row = $res->fetch_assoc()) {
+                    $opts .= "<option value='".h($row['section'])."'>".h($row['section'])."</option>";
+                }
+                $stmt->close();
+            }
+            echo json_encode(['ok'=>true, 'sections'=>$opts]);
+            exit;
+        }
 
         // 4) Fetch ALL rolls from SVC for the selection (no student fallback)
         if ($mode === 'svcRolls') {
             $course_id = trim($_GET['course_id'] ?? '');
-            $dept_name = trim($_GET['dept_name'] ?? '');
+            $dept_id   = (int)($_GET['dept_id'] ?? 0);
             $section   = trim($_GET['section'] ?? '');
             $AY        = trim($_GET['AY'] ?? '');
 
-            if (!$course_id || !$dept_name || !$section || !$AY) {
+            if (!$course_id || !$dept_id || !$section || !$AY) {
                 echo json_encode(['ok'=>false, 'error'=>'Missing parameters']);
                 exit;
             }
 
-            $dept_short = dept_short_from_name($dept_name); // svc.dept uses short codes like IT, CSE...
             $rolls = [];
 
-            $stmt = $GLOBALS['conn']->prepare("
+            $stmt = $conn->prepare("
                 SELECT roll_no
                 FROM svc
                 WHERE course_id=? AND dept=? AND section=? AND AY=?
                 ORDER BY roll_no
             ");
-            $stmt->bind_param("ssss", $course_id, $dept_short, $section, $AY);
+            // types: course_id (s), dept (i), section (s), AY (s)
+            $stmt->bind_param("siss", $course_id, $dept_id, $section, $AY);
             $stmt->execute();
             $res = $stmt->get_result();
             while ($row = $res->fetch_assoc()) {
@@ -137,23 +124,35 @@ if ($mode === 'sections') {
             }
             $stmt->close();
 
-            echo json_encode(['ok'=>true, 'count'=>count($rolls), 'rolls'=>$rolls, 'dept_short'=>$dept_short]);
+            echo json_encode(['ok'=>true, 'count'=>count($rolls), 'rolls'=>$rolls, 'dept_id'=>$dept_id]);
             exit;
         }
 
         echo json_encode(['ok'=>false, 'error'=>'Unknown mode']);
     } catch (Throwable $e) {
-        echo json_encode(['ok'=>false, 'error'=>$e->getMessage()]);
+        if (isset($conn) && $conn instanceof mysqli) {
+            $conn->rollback();
+        }
+        $err = [
+            'type' => 'danger',
+            'msg'  => 'Error while saving: ' 
+                      . h($e->getMessage()) 
+                      . '<br><strong>File:</strong> ' . h($e->getFile()) 
+                      . '<br><strong>Line:</strong> ' . h($e->getLine())
+        ];
+        echo json_encode(['ok'=>false, 'error'=>$e->getMessage(), 'debug'=>$err]);
     }
+
     exit;
 }
 
 /* ============================== Ensure fvc_schedule exists ============================== */
+/* note: dept now INT to match converted schema (dept_id numeric) */
 $conn->query("
 CREATE TABLE IF NOT EXISTS fvc_schedule (
     schedule_id INT AUTO_INCREMENT PRIMARY KEY,
     course_id VARCHAR(20) NOT NULL,
-    dept VARCHAR(100) NOT NULL,
+    dept INT NOT NULL,
     AY VARCHAR(20) NOT NULL,
     section VARCHAR(10) NOT NULL,
     start_roll_no VARCHAR(20) NOT NULL,
@@ -162,10 +161,7 @@ CREATE TABLE IF NOT EXISTS fvc_schedule (
     session ENUM('FN','AN') NOT NULL,
     remarks VARCHAR(255),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_tuple (course_id, section, dept, AY),
-    CONSTRAINT fk_fvc_sched FOREIGN KEY (course_id, section, dept, AY)
-      REFERENCES fvc(course_id, section, dept, AY)
-      ON DELETE CASCADE
+    KEY idx_tuple (course_id, section, dept, AY)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 ");
 
@@ -218,17 +214,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Compose Month, Year -> "Month, YYYY"
     $mon_year = (isset($months[$mon_sel]) && $yr_sel>0) ? ($months[$mon_sel].", ".$yr_sel) : '';
 
-    // Resolve dept text & programme name (dept short is used in fvc/fvc_schedule here)
-    $dept_name = '';
+    // Resolve dept text & programme name for display (dept stored as integer id)
+    $dept_name_display = '';
     if ($dept_id > 0) {
         $st = $conn->prepare("SELECT dept_name FROM departments WHERE dept_id=?");
         $st->bind_param("i", $dept_id);
         $st->execute();
-        $st->bind_result($dept_name);
+        $st->bind_result($dept_name_display);
         $st->fetch();
         $st->close();
     }
-    $dept_text = ($dept_name!=='') ? dept_short_from_name($dept_name) : '';
 
     $prog_name = '';
     if ($programme_id > 0) {
@@ -247,26 +242,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->begin_transaction();
         try {
             // Upsert into fvc (PK: course_id, section, dept, AY)
-      $sql = "INSERT INTO fvc (faculty_id, ext_faculty_id, course_id, section, dept, sem, programme_id, AY, mon_year)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          faculty_id=VALUES(faculty_id),
-          ext_faculty_id=VALUES(ext_faculty_id),
-          sem=VALUES(sem),
-          programme_id=VALUES(programme_id),
-          mon_year=VALUES(mon_year)";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("ssssssiss",
-    $int_fid, $ext_fid, $course_id, $section, $dept_text, $sem, $programme_id, $AY, $mon_year
-);
+            // dept is stored as integer dept_id
+            $sql = "INSERT INTO fvc (
+                faculty_id,
+                ext_faculty_id,
+                course_id,
+                section,
+                dept,
+                sem,
+                programme_id,
+                AY,
+                mon_year
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                faculty_id = VALUES(faculty_id),
+                ext_faculty_id = VALUES(ext_faculty_id),
+                sem = VALUES(sem),
+                programme_id = VALUES(programme_id),
+                mon_year = VALUES(mon_year)";
 
+            $stmt = $conn->prepare($sql);
+            // types for 9 params:
+            // 1 faculty_id (s)
+            // 2 ext_faculty_id (s)
+            // 3 course_id (s)
+            // 4 section (s)
+            // 5 dept (i)
+            // 6 sem (s)
+            // 7 programme_id (i)
+            // 8 AY (s)
+            // 9 mon_year (s)
+            $stmt->bind_param("ssssisiss", $int_fid, $ext_fid, $course_id, $section, $dept_id, $sem, $programme_id, $AY, $mon_year);
             $stmt->execute();
             $stmt->close();
 
             // Replace existing schedules if requested
             if ($replace_existing) {
                 $del = $conn->prepare("DELETE FROM fvc_schedule WHERE course_id=? AND dept=? AND AY=? AND section=?");
-                $del->bind_param("ssss", $course_id, $dept_text, $AY, $section);
+                // types: course_id(s), dept(i), AY(s), section(s)
+                $del->bind_param("siss", $course_id, $dept_id, $AY, $section);
                 $del->execute();
                 $del->close();
             }
@@ -275,7 +289,7 @@ $stmt->bind_param("ssssssiss",
             $ins = $conn->prepare("INSERT INTO fvc_schedule
                 (course_id, dept, AY, section, start_roll_no, end_roll_no, exam_date, session, remarks)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
+            // types: course_id(s), dept(i), AY(s), section(s), start_roll_no(s), end_roll_no(s), exam_date(s), session(s), remarks(s)
             $inserted = 0;
             $rows = max(count($starts), count($ends), count($dates), count($sessions));
             for ($i=0; $i<$rows; $i++){
@@ -287,14 +301,14 @@ $stmt->bind_param("ssssssiss",
 
                 if ($sr==='' || $er==='' || $dt==='' || !in_array($ss, ['FN','AN'], true)) continue;
 
-                $ins->bind_param("sssssssss", $course_id, $dept_text, $AY, $section, $sr, $er, $dt, $ss, $rm);
+                $ins->bind_param("sisssssss", $course_id, $dept_id, $AY, $section, $sr, $er, $dt, $ss, $rm);
                 $ins->execute();
                 if ($ins->affected_rows>0) $inserted++;
             }
             $ins->close();
 
             $conn->commit();
-            $alert = ['type'=>'success','msg'=>"Saved successfully for <strong>".h($course_id)." / ".h($dept_text)." / ".h($AY)." / Sec ".h($section)."</strong>. Inserted <strong>{$inserted}</strong> schedule batch(es)."];
+            $alert = ['type'=>'success','msg'=>"Saved successfully for <strong>".h($course_id)." / ".h($dept_name_display ?: $dept_id)." / ".h($AY)." / Sec ".h($section)."</strong>. Inserted <strong>{$inserted}</strong> schedule batch(es)."];
         } catch (Throwable $e) {
             $conn->rollback();
             $alert = ['type'=>'danger','msg'=>'Error while saving: '.h($e->getMessage())];
@@ -455,7 +469,7 @@ if ((int)old('school_id',0) > 0) {
                                     }
                                     ?>
                                 </select>
-                                <small class="form-text text-muted">Populates from FVC → Student(branch) → default 1–5.</small>
+                                <small class="form-text text-muted">Populates from SVC (student-course mapping) for the selected Course/Dept/AY.</small>
                             </div>
                         </div>
 
@@ -712,11 +726,11 @@ function fetchSvcRollsAndBuild(){
         ajax: 1,
         mode: 'svcRolls',
         course_id: $('#course_id').val(),
-        dept_name: $('#department option:selected').text(),
+        dept_id: $('#department').val(), // send dept_id (numeric)
         section: $('#section').val(),
         AY: $('#AY').val()
     };
-    if(!payload.course_id || !payload.dept_name || !payload.section || !payload.AY){
+    if(!payload.course_id || !payload.dept_id || !payload.section || !payload.AY){
         clearSvcInfo();
         return;
     }
@@ -724,7 +738,7 @@ function fetchSvcRollsAndBuild(){
         if(resp.ok){
             lastSvcRolls = resp.rolls || [];
             const count = resp.count || 0;
-            const info = count ? `Loaded ${count} roll(s) from SVC (${resp.dept_short}), range: ${lastSvcRolls[0]} → ${lastSvcRolls[count-1]}` : 'No SVC rolls found for this selection.';
+            const info = count ? `Loaded ${count} roll(s) from SVC (Dept ${resp.dept_id}), range: ${lastSvcRolls[0]} → ${lastSvcRolls[count-1]}` : 'No SVC rolls found for this selection.';
             $('#svcInfo').text(info);
             if(count === 0){
                 $('#svcWarning').show().text('No students found in SVC for this Course/Dept/AY/Section. Batches not auto-filled.');
