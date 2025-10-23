@@ -1,0 +1,95 @@
+/* General body styling */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f8ff; /* Light blue background */
+}
+
+/* Header styling */
+header {
+    background-color: #1e90ff; /* Dodger blue */
+    color: #fff; /* White text */
+    text-align: center;
+    padding: 20px 0;
+}
+
+/* Fluid container for main content */
+.container-fluid {
+    flex-grow: 1;
+    padding: 0; /* Ensure no extra padding around the container */
+}
+
+/* Row to hold navigation and content area */
+.row {
+    flex-grow: 1;
+    margin: 0; /* Remove default margin */
+}
+
+/* Navigation styling (left sidebar) */
+nav {
+    background-color: #4682b4; /* Steel blue */
+    padding: 15px;
+    height: 100%;
+    margin: 0; /* Remove margin */
+    padding-left: 0; /* Align to the left-most side */
+}
+
+/* Navigation list styling */
+nav ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+nav ul li {
+    margin: 15px 0;
+}
+
+nav ul li a {
+    color: #fff; /* White text for links */
+    text-decoration: none;
+    font-size: 18px;
+}
+
+nav ul li a:hover {
+    color: #87cefa; /* Light sky blue for hover effect */
+}
+
+/* Content area styling */
+#content-area {
+    padding: 20px;
+    background-color: #fff;
+    height: 100%;
+}
+
+/* Footer styling */
+footer {
+    background-color: #1e90ff; /* Dodger blue */
+    color: #fff; /* White text */
+    text-align: center;
+    padding: 0; /* Remove padding to control height */
+    width: 100%;
+    height: 20px; /* Set height explicitly */
+    margin-top: auto; /* Push footer to the bottom */
+    line-height: 20px; /* Align text vertically within footer */
+}
+
+/* Button styling */
+button {
+    background-color: #1e90ff; /* Dodger blue */
+    color: #fff; /* White text */
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 5px; /* Rounded corners */
+    font-size: 16px;
+    transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+    margin: 10px 0; /* Margin for spacing */
+}
+
+/* Button hover effect */
+button:hover {
+    background-color: #4682b4; /* Change to steel blue on hover */
+    color: #f0f8ff; /* Optional: change text color to match background */
+}
