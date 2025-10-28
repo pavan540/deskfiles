@@ -56,6 +56,7 @@ class OracleDatabase extends \Google\Service
   public $projects_locations_dbVersions;
   public $projects_locations_entitlements;
   public $projects_locations_exadbVmClusters;
+  public $projects_locations_exadbVmClusters_dbNodes;
   public $projects_locations_exascaleDbStorageVaults;
   public $projects_locations_giVersions;
   public $projects_locations_giVersions_minorVersions;
@@ -283,6 +284,24 @@ class OracleDatabase extends \Google\Service
                   'type' => 'integer',
                 ],
                 'pageToken' => [
+                  'location' => 'query',
+                  'type' => 'string',
+                ],
+              ],
+            ],'patch' => [
+              'path' => 'v1/{+name}',
+              'httpMethod' => 'PATCH',
+              'parameters' => [
+                'name' => [
+                  'location' => 'path',
+                  'type' => 'string',
+                  'required' => true,
+                ],
+                'requestId' => [
+                  'location' => 'query',
+                  'type' => 'string',
+                ],
+                'updateMask' => [
                   'location' => 'query',
                   'type' => 'string',
                 ],
@@ -963,6 +982,34 @@ class OracleDatabase extends \Google\Service
           ]
         ]
     );
+    $this->projects_locations_exadbVmClusters_dbNodes = new OracleDatabase\Resource\ProjectsLocationsExadbVmClustersDbNodes(
+        $this,
+        $this->serviceName,
+        'dbNodes',
+        [
+          'methods' => [
+            'list' => [
+              'path' => 'v1/{+parent}/dbNodes',
+              'httpMethod' => 'GET',
+              'parameters' => [
+                'parent' => [
+                  'location' => 'path',
+                  'type' => 'string',
+                  'required' => true,
+                ],
+                'pageSize' => [
+                  'location' => 'query',
+                  'type' => 'integer',
+                ],
+                'pageToken' => [
+                  'location' => 'query',
+                  'type' => 'string',
+                ],
+              ],
+            ],
+          ]
+        ]
+    );
     $this->projects_locations_exascaleDbStorageVaults = new OracleDatabase\Resource\ProjectsLocationsExascaleDbStorageVaults(
         $this,
         $this->serviceName,
@@ -1317,6 +1364,10 @@ class OracleDatabase extends \Google\Service
                 'pageToken' => [
                   'location' => 'query',
                   'type' => 'string',
+                ],
+                'returnPartialSuccess' => [
+                  'location' => 'query',
+                  'type' => 'boolean',
                 ],
               ],
             ],

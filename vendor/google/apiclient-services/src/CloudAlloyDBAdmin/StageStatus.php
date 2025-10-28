@@ -21,8 +21,6 @@ class StageStatus extends \Google\Model
 {
   protected $readPoolInstancesUpgradeType = ReadPoolInstancesUpgradeStageStatus::class;
   protected $readPoolInstancesUpgradeDataType = '';
-  protected $scheduleType = StageSchedule::class;
-  protected $scheduleDataType = '';
   /**
    * @var string
    */
@@ -45,20 +43,6 @@ class StageStatus extends \Google\Model
   public function getReadPoolInstancesUpgrade()
   {
     return $this->readPoolInstancesUpgrade;
-  }
-  /**
-   * @param StageSchedule
-   */
-  public function setSchedule(StageSchedule $schedule)
-  {
-    $this->schedule = $schedule;
-  }
-  /**
-   * @return StageSchedule
-   */
-  public function getSchedule()
-  {
-    return $this->schedule;
   }
   /**
    * @param string

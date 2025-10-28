@@ -48,7 +48,7 @@ if (!empty($unfinalized_sections)) {
     echo "<div style='margin:60px auto;max-width:700px;border:2px solid #dc3545;padding:25px;border-radius:10px;text-align:center;font-family:Arial'>";
     echo "<h2 style='color:#dc3545;'>⚠ Cannot Generate Absent Statement</h2>";
     echo "<p>Marks not finalized for section(s): <b>".implode(', ',$unfinalized_sections)."</b></p>";
-    echo "<a href='print_lab_marks.php' style='background:#007bff;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;'>← Back</a>";
+    echo "<a href='print_details_att_dept.php' style='background:#007bff;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;'>← Back</a>";
     echo "</div>";
     exit;
 }

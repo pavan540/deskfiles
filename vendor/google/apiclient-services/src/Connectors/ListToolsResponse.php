@@ -21,12 +21,30 @@ class ListToolsResponse extends \Google\Collection
 {
   protected $collection_key = 'tools';
   /**
+   * @var array[]
+   */
+  public $metadata;
+  /**
    * @var string
    */
   public $nextPageToken;
   protected $toolsType = Tool::class;
   protected $toolsDataType = 'array';
 
+  /**
+   * @param array[]
+   */
+  public function setMetadata($metadata)
+  {
+    $this->metadata = $metadata;
+  }
+  /**
+   * @return array[]
+   */
+  public function getMetadata()
+  {
+    return $this->metadata;
+  }
   /**
    * @param string
    */
