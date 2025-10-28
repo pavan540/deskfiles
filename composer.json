@@ -1,8 +1,9 @@
 {
     "require": {
         "php": ">=7.4",
-        "google/apiclient": "^2.15",
         "fpdf/fpdf": "^1.8",
+        "google/apiclient": "^2.15",
+        "phpoffice/phpspreadsheet": "^5.2",
         "setasign/fpdi": "^2.3"
     },
     "autoload": {
