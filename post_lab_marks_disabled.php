@@ -2,7 +2,9 @@
 session_start();
 require_once 'connection.php';
 
-// Redirect if not logged in
+/* =======================
+   ✅ Authentication Check
+   ======================= */
 if (!isset($_SESSION['faculty_id'])) {
     header("Location: login.html");
     exit();
@@ -10,11 +12,14 @@ if (!isset($_SESSION['faculty_id'])) {
 
 $faculty_id = $_SESSION['faculty_id'];
 
-/* ✅ FIXED QUERY:
-   - Only considers rows where logged-in user is the main faculty (faculty_id)
-   - Ignores ext_faculty_id completely
-   - Uses DISTINCT to remove duplicates
-   - Includes subquery to check marks posting status
+/* ==========================================
+   ✅ SQL Query to Fetch Assigned Courses
+   ==========================================
+
+   - Selects all unique courses for the logged-in faculty
+   - Counts marks from `marks` table based on matching course_id, section, dept, AY
+   - Fix: CAST(f.dept AS UNSIGNED) to match marks.dept (INT)
+   - Orders by numeric section value
 */
 $sql = "
     SELECT DISTINCT 
@@ -29,7 +34,7 @@ $sql = "
             FROM marks m 
             WHERE m.course_id = f.course_id 
               AND m.section = f.section 
-              AND m.dept = f.dept 
+              AND m.dept = CAST(f.dept AS UNSIGNED)
               AND m.AY = f.AY
         ) AS marks_count
     FROM fvc f
@@ -53,6 +58,9 @@ $conn->close();
 <title>Post Lab Marks</title>
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
 <style>
+body {
+    background-color: #f7f9fc;
+}
 .course-btn {
     margin: 10px;
     padding: 15px 25px;
@@ -60,7 +68,7 @@ $conn->close();
     border-radius: 8px;
     min-width: 320px;
     white-space: normal;
-    transition: transform 0.2s;
+    transition: transform 0.2s, background-color 0.2s;
 }
 .course-btn:hover {
     transform: scale(1.05);
@@ -73,7 +81,7 @@ $conn->close();
     text-decoration: underline;
 }
 
-/* Lightbox Popup */
+/* ✅ Lightbox Popup */
 #popup-overlay {
     display: none;
     position: fixed;
@@ -104,6 +112,22 @@ $conn->close();
     from {opacity: 0; transform: scale(0.9);}
     to {opacity: 1; transform: scale(1);}
 }
+
+/* ✅ Color Adjustments */
+.btn-warning {
+    background-color: #ffca2c;
+    border-color: #ffc107;
+    color: black;
+}
+.btn-success {
+    background-color: #28a745;
+    border-color: #218838;
+    color: white;
+}
+.btn-success[disabled] {
+    opacity: 0.8;
+    cursor: not-allowed;
+}
 </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
@@ -116,36 +140,38 @@ $conn->close();
 <div class="container-fluid d-flex flex-grow-1">
     <div class="row w-100 flex-grow-1">
 
+        <!-- ✅ Sidebar -->
         <nav class="col-md-3 col-lg-2 bg-secondary text-white p-3">
             <?php include('faculty_menu.php'); ?>
         </nav>
 
+        <!-- ✅ Main Content -->
         <div class="col-md-9 col-lg-10 text-center" id="content-area">
             <h4 class="mt-4">Select a Course to Enter Marks</h4>
             <?php if (count($courses) > 0): ?>
                 <div class="d-flex flex-wrap justify-content-center mt-4">
                     <?php foreach ($courses as $course): ?>
                         <?php if ($course['marks_count'] > 0): ?>
-                            <!-- Marks already posted -->
+                            <!-- ✅ Marks already posted -->
                             <button type="button" 
                                     class="btn btn-success course-btn" 
-                                    onclick="showPopup('<?php echo htmlspecialchars($course['name']); ?>', '<?php echo htmlspecialchars($course['section']); ?>')">
-                                <?php echo htmlspecialchars($course['name']); ?> 
+                                    onclick="showPopup('<?php echo htmlspecialchars($course['name']); ?>', '<?php echo htmlspecialchars($course['section']); ?>')"
+                                    disabled>
+                                <strong><?php echo htmlspecialchars($course['name']); ?></strong><br>
                                 (<?php echo htmlspecialchars($course['type']); ?>, 
                                 Sec: <?php echo htmlspecialchars($course['section']); ?>, 
                                 Dept: <?php echo htmlspecialchars($course['dept']); ?>, 
                                 AY: <?php echo htmlspecialchars($course['AY']); ?>)
                             </button>
                         <?php else: ?>
-                            <!-- Marks not posted -->
+                            <!-- ⚠️ Marks not posted -->
                             <form action="enter_marks_1.php" method="get" style="display:inline;">
                                 <input type="hidden" name="course_id" value="<?php echo htmlspecialchars($course['course_id']); ?>">
                                 <input type="hidden" name="section" value="<?php echo htmlspecialchars($course['section']); ?>">
                                 <input type="hidden" name="AY" value="<?php echo htmlspecialchars($course['AY']); ?>">
                                 <input type="hidden" name="dept" value="<?php echo htmlspecialchars($course['dept']); ?>">
-
                                 <button type="submit" class="btn btn-warning course-btn">
-                                    <?php echo htmlspecialchars($course['name']); ?> 
+                                    <strong><?php echo htmlspecialchars($course['name']); ?></strong><br>
                                     (<?php echo htmlspecialchars($course['type']); ?>, 
                                     Sec: <?php echo htmlspecialchars($course['section']); ?>, 
                                     Dept: <?php echo htmlspecialchars($course['dept']); ?>, 
@@ -156,14 +182,16 @@ $conn->close();
                     <?php endforeach; ?>
                 </div>
             <?php else: ?>
-                <p class="mt-4 text-danger">No courses assigned to you.<br>
-                If this is unexpected, please contact the Academic Section.</p>
+                <p class="mt-4 text-danger">
+                    No courses assigned to you.<br>
+                    If this is unexpected, please contact the Academic Section.
+                </p>
             <?php endif; ?>
         </div>
     </div>
 </div>
 
-<!-- Lightbox Popup -->
+<!-- ✅ Lightbox Popup -->
 <div id="popup-overlay">
     <div id="popup-box">
         <h4>Marks Already Posted</h4>

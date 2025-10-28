@@ -126,10 +126,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$already_finalized) {
                     total_in_words=VALUES(total_in_words),
                     is_absent=VALUES(is_absent),
                     is_finalized=1");
-                $ins->bind_param("sssiiiiiisii",
-                    $roll_no, $course_id, $section, $dept_id, $AY,
-                    $p, $v, $r, $e, $total, $words, $is_abs
-                );
+                $ins->bind_param("sssssiiiisii",
+    $roll_no, $course_id, $section, $dept_id, $AY,
+    $p, $v, $r, $e, $total, $words, $is_abs
+);
+
                 $ins->execute();
                 $ins->close();
             }
@@ -138,7 +139,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$already_finalized) {
             $just_finalized = true;
             $finalized_display_time = date("j F Y, g:i A");
             $_SESSION['finalized_display_time'] = $finalized_display_time;
-            $success_messages[] = "✅ Marks submitted and finalized successfully for Section: " . htmlspecialchars($section) . " on " . $finalized_display_time . ".";
+            $success_messages[] = "✅ Marks submitted and finalized successfully for Section: " . htmlspecialchars($section) ." on " . $finalized_display_time . ".";
         }
     }
 }
