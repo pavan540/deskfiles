@@ -30,6 +30,16 @@ function csrf_require_post(): void {
         exit('Invalid CSRF token');
     }
 }
+/* ---------- get department name by id ---------- */
+function get_department_name(mysqli $conn, int $dept_id): string {
+    $st = $conn->prepare("SELECT dept_name FROM departments WHERE dept_id=? LIMIT 1");
+    if (!$st) return (string)$dept_id;
+    $st->bind_param('i', $dept_id);
+    $st->execute();
+    $r = $st->get_result()->fetch_assoc();
+    $st->close();
+    return $r['dept_name'] ?? (string)$dept_id;
+}
 
 /* ---------- authorization (fvc) ---------- */
 function require_course_authorized(mysqli $conn, string $faculty_id, string $course_id, string $section, string $dept, string $AY): array {
@@ -44,6 +54,9 @@ function require_course_authorized(mysqli $conn, string $faculty_id, string $cou
     if (!$row) { http_response_code(403); exit('Permission denied: you are not mapped to this section.'); }
     return $row;
 }
+
+
+
 
 /* ---------- fetch faculty ---------- */
 function get_faculty_by_id(mysqli $conn, string $fid): array {
@@ -210,13 +223,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                             <div class="form-group col-md-6">
                                 <label>Examiner 1</label>
                                 <input type="text" class="form-control" value="<?= e($exam1['name']).' — '.e($exam1['designation']) ?>" readonly>
-                                <small class="form-text text-muted">Auto fetched from allocation (fvc.faculty_id)</small>
+                                <!--<small class="form-text text-muted">Auto fetched from allocation (fvc.faculty_id)</small> -->
                             </div>
 
                             <div class="form-group col-md-6">
                                 <label>Examiner 2</label>
                                 <input type="text" class="form-control" value="<?= e($exam2['name']).' — '.e($exam2['designation']) ?>" readonly>
-                                <small class="form-text text-muted">Auto fetched from allocation (fvc.ext_faculty_id)</small>
+                              <!--  <small class="form-text text-muted">Auto fetched from allocation (fvc.ext_faculty_id)</small> -->
                             </div>
                         </div>
 
@@ -239,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                             Examiner details are auto-fetched. Use the fields above to choose staff (suggestions from faculty table).
                         </div>
 
-                        <button type="submit" name="generate_pdf" class="btn btn-primary">Generate 3-Page PDF</button>
+                        <button type="submit" name="generate_pdf" class="btn btn-primary">Generate Remmuneration(sec)</button>
                         <a href="select_section_remuneration.php" class="btn btn-light">Back</a>
                     </form>
                 </div>
@@ -346,33 +359,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $total_candidates = get_total_candidates_section($conn, $course_id, $section, $dept, $AY);
 
     // Insert into remuneration table if not exists
-    $chk = $conn->prepare("SELECT id FROM remuneration WHERE course_id=? AND section=? AND dept=? AND AY=? LIMIT 1");
-    if (!$chk) { http_response_code(500); exit('DB prepare error'); }
-    $chk->bind_param('ssis', $course_id, $section, $dept_int, $AY);
-    $chk->execute();
-    $exists = $chk->get_result()->fetch_assoc();
-    $chk->close();
+   // --- Upsert remuneration record ---
+$chk = $conn->prepare("SELECT id FROM remuneration WHERE course_id=? AND section=? AND dept=? AND AY=? LIMIT 1");
+if (!$chk) { http_response_code(500); exit('DB prepare error'); }
+$chk->bind_param('ssis', $course_id, $section, $dept_int, $AY);
+$chk->execute();
+$exists = $chk->get_result()->fetch_assoc();
+$chk->close();
 
-    if (!$exists) {
-        $ins = $conn->prepare("INSERT INTO remuneration(course_id, section, dept, AY, faculty_id, examiner1_id, examiner2_id, tech_name, deo_name, peon_name, total_candidates)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if (!$ins) { http_response_code(500); exit('DB prepare error'); }
-        $ins->bind_param('ssisssssssi',
-            $course_id,
-            $section,
-            $dept_int,
-            $AY,
-            $faculty,
-            $examiner1_id,
-            $examiner2_id,
-            $tech_name,
-            $deo_name,
-            $peon_name,
-            $total_candidates
-        );
-        $ins->execute();
-        $ins->close();
-    }
+if ($exists) {
+    // Update existing record
+    $upd = $conn->prepare("UPDATE remuneration 
+                           SET faculty_id=?, examiner1_id=?, examiner2_id=?, tech_name=?, deo_name=?, peon_name=?, total_candidates=?, updated_at=NOW()
+                           WHERE course_id=? AND section=? AND dept=? AND AY=?");
+    if (!$upd) { http_response_code(500); exit('DB prepare error'); }
+    $upd->bind_param('ssssssissis',
+        $faculty,
+        $examiner1_id,
+        $examiner2_id,
+        $tech_name,
+        $deo_name,
+        $peon_name,
+        $total_candidates,
+        $course_id,
+        $section,
+        $dept_int,
+        $AY
+    );
+    $upd->execute();
+    $upd->close();
+} else {
+    // Insert new record
+    $ins = $conn->prepare("INSERT INTO remuneration(course_id, section, dept, AY, faculty_id, examiner1_id, examiner2_id, tech_name, deo_name, peon_name, total_candidates, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+    if (!$ins) { http_response_code(500); exit('DB prepare error'); }
+    $ins->bind_param('ssisssssssi',
+        $course_id,
+        $section,
+        $dept_int,
+        $AY,
+        $faculty,
+        $examiner1_id,
+        $examiner2_id,
+        $tech_name,
+        $deo_name,
+        $peon_name,
+        $total_candidates
+    );
+    $ins->execute();
+    $ins->close();
+}
+
 
     // fetch course & faculty details for PDF
     $st = $conn->prepare("SELECT name FROM courses WHERE course_id=? LIMIT 1");
@@ -398,230 +435,148 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $staff_total = $amt_tech + $amt_deo + $amt_peon;
 
     // PDF generation (FPDF)
-    $pdf = new FPDF('P','mm','A4');
-    $pdf->SetMargins(10,12,10);
+   // ---------- Simplified PDF: Only CONSOLIDATED REMUNERATION BILL ----------
 
-    // Small helper to add common header
-    $addHeader = function($pdf){
-        if (file_exists(__DIR__.'/logo.png')) $pdf->Image(__DIR__.'/logo.png', 12, 10, 18);
-        $pdf->SetFont('Times','B',14);
-        $pdf->Cell(0,8,'SIDDHARTHA ACADEMY OF HIGHER EDUCATION',0,1,'C');
-        $pdf->Ln(4);
-    };
+// PDF generation (FPDF)
+$pdf = new FPDF('P','mm','A4');
+$pdf->SetMargins(10,12,10);
 
-    // Helper to create a bill page
-    $make_bill = function($pdf, $title, $payee_name, $payee_desig, $payee_bank, $amount, $amount_words) use ($conn, $course, $course_id, $section, $dept, $AY, $total_candidates, $addHeader) {
-        $pdf->AddPage();
-        $addHeader($pdf);
-        $pdf->SetFont('Arial','B',12); $pdf->Cell(0,7,$title,0,1,'C'); $pdf->Ln(4);
-        $pdf->SetFont('Arial','',10);
-        $pdf->Cell(45,6,'Course',0,0); $pdf->Cell(0,6,': '.$course['name'].' ('.$course_id.')',0,1);
-        $pdf->Cell(45,6,'Section',0,0); $pdf->Cell(0,6,': '.$section,0,1);
-        $pdf->Cell(45,6,'Department',0,0); $pdf->Cell(0,6,': '.$dept,0,1);
-        $pdf->Cell(45,6,'Academic Year',0,0); $pdf->Cell(0,6,': '.$AY,0,1);
-        $pdf->Cell(45,6,'Total Candidates',0,0); $pdf->Cell(0,6,': '.$total_candidates,0,1);
-        $pdf->Ln(6);
+// Header helper
+// ---------- Enhanced Header ----------
+$addHeader = function($pdf) {
+    // Logo (left side)
+    if (file_exists(__DIR__ . '/logo.png')) {
+        $pdf->Image(__DIR__ . '/logo.png', 15, 12, 22);
+    }
 
-        $pdf->SetFont('Arial','B',10);
-        $pdf->Cell(10,8,'Sl',1,0,'C'); $pdf->Cell(80,8,'Name',1,0); $pdf->Cell(60,8,'Details',1,0); $pdf->Cell(30,8,'Amount',1,1,'R');
-        $pdf->SetFont('Arial','',10);
-        // Use MultiCell for name/details to allow wrapping if long
-        $x = $pdf->GetX(); $y = $pdf->GetY();
-        $pdf->Cell(10,8,'1',1,0,'C');
+    // University Name & Details (center)
+    $pdf->SetXY(15, 12);
+    $pdf->SetFont('Times', 'B', 14);
+    $pdf->Cell(0, 7, 'SIDDHARTHA ACADEMY OF HIGHER EDUCATION', 0, 1, 'C');
 
-        // Name cell (wrap)
-        $pdf->SetXY($x+10, $y);
-        $pdf->MultiCell(80, 6, $payee_name, 1, 'L');
+    $pdf->SetFont('Arial', '', 9);
+    $pdf->Cell(0, 5, 'An Institution Deemed to be University', 0, 1, 'C');
+    $pdf->SetFont('Arial', 'I', 8.5);
+    $pdf->Cell(0, 5, '(Under Section 3 of UGC Act, 1956)', 0, 1, 'C');
+    $pdf->SetFont('Arial', '', 8.5);
+    $pdf->Cell(0, 5, 'Kanuru, Vijayawada - 520007, A.P.  www.vrsiddhartha.ac.in', 0, 1, 'C');
 
-        // Details cell (designation + bank)
-        $h = $pdf->GetY(); // current after name multi
-        $pdf->SetXY($x+10+80, $y);
-        $pdf->MultiCell(60, 6, $payee_desig . "\n" . $payee_bank, 1, 'L');
+    // Contact Info (right side)
+    $pdf->SetXY(-65, 12);
+    $pdf->SetFont('Arial', '', 9);
+    $pdf->Cell(50, 5, '91 866 2582333', 0, 2, 'R');
+    $pdf->Cell(50, 5, '866 2582334', 0, 2, 'R');
+    $pdf->Cell(50, 5, '866 2584930', 0, 1, 'R');
 
-        // Amount cell (align right)
-        $pdf->SetXY($x+10+80+60, $y);
-        $pdf->MultiCell(30, 6, number_format($amount,2), 1, 'R');
-
-        // Move to after the tallest cell
-        $pdf->SetY(max($h, $pdf->GetY()) + 2);
-
-        $pdf->Ln(2);
-        $pdf->Cell(0,6,'Amount (in words): '.$amount_words,0,1);
-        $pdf->Ln(10);
-        $pdf->Cell(60,6,'Internal Examiner',0,0,'L'); $pdf->Cell(70,6,'Head Of The Department',0,0,'C'); $pdf->Cell(0,6,'Signature of the Dean',0,1,'R');
-    };
-
-    $amt1_words = number_to_words_indian((int)round($amt_exam1))." Rupees Only";
-    $amt2_words = number_to_words_indian((int)round($amt_exam2))." Rupees Only";
-    $staff_words = number_to_words_indian((int)round($staff_total))." Rupees Only";
-
-    $bank1 = trim(($exam1['bank_branch_name'] ?? '') . ' A/C: ' . ($exam1['account_number'] ?? ''));
-    $bank2 = trim(($exam2['bank_branch_name'] ?? '') . ' A/C: ' . ($exam2['account_number'] ?? ''));
-
-    $make_bill($pdf, 'REMUNERATION BILL - EXAMINER 1', ($exam1['name'] ?: $examiner1_id), ($exam1['designation'] ?: 'Examiner'), $bank1, $amt_exam1, $amt1_words);
-    $make_bill($pdf, 'REMUNERATION BILL - EXAMINER 2', ($exam2['name'] ?: $examiner2_id), ($exam2['designation'] ?: 'Examiner'), $bank2, $amt_exam2, $amt2_words);
-
-    // Page 3: staff consolidated
-    $pdf->AddPage();
-    $addHeader($pdf);
-    $pdf->SetFont('Arial','B',12); $pdf->Cell(0,7,'REMUNERATION BILL - SUPPORT STAFF',0,1,'C'); $pdf->Ln(4);
-    $pdf->SetFont('Arial','',10);
-    $pdf->Cell(45,6,'Course',0,0); $pdf->Cell(0,6,': '.$course['name'].' ('.$course_id.')',0,1);
-    $pdf->Cell(45,6,'Section',0,0); $pdf->Cell(0,6,': '.$section,0,1);
-    $pdf->Cell(45,6,'Department',0,0); $pdf->Cell(0,6,': '.$dept,0,1);
-    $pdf->Cell(45,6,'Academic Year',0,0); $pdf->Cell(0,6,': '.$AY,0,1);
-    $pdf->Cell(45,6,'Total Candidates',0,0); $pdf->Cell(0,6,': '.$total_candidates,0,1);
+    // Horizontal line under header
+    $pdf->Ln(3);
+    
     $pdf->Ln(6);
+};
 
-    $pdf->SetFont('Arial','B',10);
-    $w = [12, 70, 45, 48, 25];
-    $heads = ['Sl.No','Name','Designation','No. of Candidates x Rate','Total Amount'];
-    foreach ($heads as $i => $h) $pdf->Cell($w[$i],8,$h,1,0,'C');
-    $pdf->Ln();
 
-    $pdf->SetFont('Arial','',10);
-    $pdf->Cell($w[0],8,'1',1,0,'C'); $pdf->Cell($w[1],8,$tech_name,1,0); $pdf->Cell($w[2],8,'Lab Technician',1,0);
-    $pdf->Cell($w[3],8,"{$total_candidates} x Rs. ".number_format($RATE_TECH,2),1,0,'C'); $pdf->Cell($w[4],8,'Rs. '.number_format($amt_tech,2),1,1,'R');
+// Start PDF
+$pdf->AddPage();
+$addHeader($pdf);
 
-    $pdf->Cell($w[0],8,'2',1,0,'C'); $pdf->Cell($w[1],8,$deo_name,1,0); $pdf->Cell($w[2],8,'DEO / Clerk',1,0);
-    $pdf->Cell($w[3],8,"{$total_candidates} x Rs. ".number_format($RATE_DEO,2),1,0,'C'); $pdf->Cell($w[4],8,'Rs. '.number_format($amt_deo,2),1,1,'R');
+$pdf->SetFont('Arial','B',12);
+$pdf->Cell(0,7,'CONSOLIDATED REMUNERATION BILL (EXAMINERS + STAFF)',0,1,'C');
+$pdf->Ln(4);
 
-    $pdf->Cell($w[0],8,'3',1,0,'C'); $pdf->Cell($w[1],8,$peon_name,1,0); $pdf->Cell($w[2],8,'Attender / Peon',1,0);
-    $pdf->Cell($w[3],8,"{$total_candidates} x Rs. ".number_format($RATE_PEON,2),1,0,'C'); $pdf->Cell($w[4],8,'Rs. '.number_format($amt_peon,2),1,1,'R');
+$pdf->SetFont('Arial','',10);
+$pdf->Cell(45,6,'Course',0,0);       $pdf->Cell(0,6,': '.$course['name'].' ('.$course_id.')',0,1);
+$pdf->Cell(45,6,'Section',0,0);      $pdf->Cell(0,6,': '.$section,0,1);
+$dept_name = get_department_name($conn, $dept_int);
+$pdf->Cell(45,6,'Department',0,0);   $pdf->Cell(0,6,': '.$dept_name,0,1);
+$pdf->Cell(45,6,'Academic Year',0,0);$pdf->Cell(0,6,': '.$AY,0,1);
+$pdf->Cell(45,6,'Total Candidates Present',0,0); $pdf->Cell(0,6,': '.$total_candidates,0,1);
 
-    $pdf->SetFont('Arial','B',10);
-    $pdf->Cell($w[0]+$w[1]+$w[2]+$w[3],8,'Grand Total:',1,0,'R'); $pdf->Cell($w[4],8,'Rs. '.number_format($staff_total,2),1,1,'R');
-    $pdf->Ln(4); $pdf->SetFont('Arial','',10);
-    $pdf->Cell(0,6,'Amount in words: '.$staff_words,0,1);
-
-    // Footer signatures
-    $pdf->Ln(8);
-    $pdf->Cell(60,6,'Internal Examiner',0,0);
-    $pdf->Cell(70,6,'Head Of The Department',0,0,'C');
-    $pdf->Cell(0,6,'Signature of the Dean',0,1,'R');
-
-    // ---------- PAGE 4 : CONSOLIDATED REMUNERATION BILL ----------
-    $pdf->AddPage();
-    $pdf->SetMargins(10, 12, 10);
-    $addHeader($pdf);
-
-    $pdf->SetFont('Arial','B',12);
-    $pdf->Cell(0,7,'CONSOLIDATED REMUNERATION BILL (EXAMINERS + STAFF)',0,1,'C');
-    $pdf->Ln(4);
-
-    $pdf->SetFont('Arial','',10);
-    $pdf->Cell(45,6,'Course',0,0);       $pdf->Cell(0,6,': '.$course['name'].' ('.$course_id.')',0,1);
-    $pdf->Cell(45,6,'Section',0,0);      $pdf->Cell(0,6,': '.$section,0,1);
-    $pdf->Cell(45,6,'Department',0,0);   $pdf->Cell(0,6,': '.$dept,0,1);
-    $pdf->Cell(45,6,'Academic Year',0,0);$pdf->Cell(0,6,': '.$AY,0,1);
-    $pdf->Cell(45,6,'Total Candidates',0,0); $pdf->Cell(0,6,': '.$total_candidates,0,1);
-
-    // ====== Retrieve exam dates (with FN/AN) from fvc_schedule table ======
-    $dates_list = [];
-    $st = $conn->prepare("
-        SELECT DISTINCT exam_date, session 
-        FROM fvc_schedule 
-        WHERE course_id=? AND section=? AND dept=? AND AY=? 
-        ORDER BY exam_date ASC
-    ");
-    if ($st) {
-        $st->bind_param('ssis', $course_id, $section, $dept_int, $AY);
-        $st->execute();
-        $res = $st->get_result();
-        while ($r = $res->fetch_assoc()) {
-            $date_str = '';
-            if (!empty($r['exam_date'])) {
-                $date_str = date('d-m-Y', strtotime($r['exam_date']));
-            }
-            if (!empty($r['session'])) {
-                $date_str .= ' (' . strtoupper(trim($r['session'])) . ')';
-            }
-            if ($date_str) $dates_list[] = $date_str;
+// ====== Retrieve exam dates ======
+$dates_list = [];
+$st = $conn->prepare("
+    SELECT DISTINCT exam_date, session 
+    FROM fvc_schedule 
+    WHERE course_id=? AND section=? AND dept=? AND AY=? 
+    ORDER BY exam_date ASC
+");
+if ($st) {
+    $st->bind_param('ssis', $course_id, $section, $dept_int, $AY);
+    $st->execute();
+    $res = $st->get_result();
+    while ($r = $res->fetch_assoc()) {
+        $date_str = '';
+        if (!empty($r['exam_date'])) {
+            $date_str = date('d-m-Y', strtotime($r['exam_date']));
         }
-        $st->close();
+        if (!empty($r['session'])) {
+            $date_str .= ' (' . strtoupper(trim($r['session'])) . ')';
+        }
+        if ($date_str) $dates_list[] = $date_str;
     }
+    $st->close();
+}
 
-    if ($dates_list) {
-        $pdf->Cell(45, 6, 'Exam Dates', 0, 0);
-        $pdf->MultiCell(0, 6, ': ' . implode(', ', $dates_list), 0, 'L');
-    }
-    $pdf->Ln(4);
+if ($dates_list) {
+    $pdf->Cell(45, 6, 'Exam Dates', 0, 0);
+    $pdf->MultiCell(0, 6, ': ' . implode(', ', $dates_list), 0, 'L');
+}
+$pdf->Ln(4);
 
-    $pdf->SetFont('Arial','B',10);
-    $w = [12, 70, 45, 48, 25];
-    $heads = ['Sl.No','Name','Designation','No. of Candidates x Rate','Total Amount'];
-    foreach ($heads as $i => $h) $pdf->Cell($w[$i],8,$h,1,0,'C');
-    $pdf->Ln();
+// ===== Table Layout =====
+$pdf->SetFont('Arial','B',10);
+// Adjusted column widths (slightly narrower and balanced)
+$w = [12, 62, 45, 48, 23];
+$heads = ['Sl.No','Name','Designation','No. of Candidates x Rate','Amount (Rs.)'];
 
-    // ====== Row Function (Auto-wrap Name) ======
-    $addRow = function($pdfRef, $w, $slno, $name, $designation, $cand_str, $amount) {
-        // We'll write directly using the passed pdfRef object
-        $pdfRef->SetFont('Arial','',9.5);
+foreach ($heads as $i => $h) $pdf->Cell($w[$i],8,$h,1,0,'C');
+$pdf->Ln();
 
-        // Save start pos
-        $x = $pdfRef->GetX();
-        $y = $pdfRef->GetY();
+// Row helper
+$addRow = function($pdfRef, $w, $slno, $name, $designation, $cand_str, $amount) {
+    $pdfRef->SetFont('Arial','',9.5);
+    $pdfRef->Cell($w[0],8,$slno,1,0,'C');
+    $pdfRef->Cell($w[1],8,$name,1,0);
+    $pdfRef->Cell($w[2],8,$designation,1,0);
+    $pdfRef->Cell($w[3],8,$cand_str,1,0,'C');
+    $pdfRef->Cell($w[4],8,number_format($amount,2),1,1,'R');
+};
 
-        // Sl.No
-        $pdfRef->MultiCell($w[0], 6, $slno, 1, 'C');
+// Add rows
+$sl = 1;
+$addRow($pdf, $w, $sl++, $exam1['name'] ?: $examiner1_id, $exam1['designation'] ?: 'Examiner', "{$total_candidates} x ".number_format($RATE_EXAM,2), $amt_exam1);
+$addRow($pdf, $w, $sl++, $exam2['name'] ?: $examiner2_id, $exam2['designation'] ?: 'Examiner', "{$total_candidates} x ".number_format($RATE_EXAM,2), $amt_exam2);
+$addRow($pdf, $w, $sl++, $tech_name, 'Lab Technician', "{$total_candidates} x ".number_format($RATE_TECH,2), $amt_tech);
+$addRow($pdf, $w, $sl++, $deo_name, 'Clerk / DEO', "{$total_candidates} x ".number_format($RATE_DEO,2), $amt_deo);
+$addRow($pdf, $w, $sl++, $peon_name, 'Attender / Peon', "{$total_candidates} x ".number_format($RATE_PEON,2), $amt_peon);
 
-        // Name (wrap)
-        $pdfRef->SetXY($x + $w[0], $y);
-        $pdfRef->MultiCell($w[1], 6, $name, 1, 'L');
+// Grand Total
+$consolidated_total = $amt_exam1 + $amt_exam2 + $amt_tech + $amt_deo + $amt_peon;
+$pdf->SetFont('Arial','B',10);
+$pdf->Cell(array_sum(array_slice($w,0,4)),8,'Grand Total:',1,0,'R');
+$pdf->Cell($w[4],8,'Rs. '.number_format($consolidated_total,2),1,1,'R');
 
-        // Designation
-        $pdfRef->SetXY($x + $w[0] + $w[1], $y);
-        $pdfRef->MultiCell($w[2], 6, $designation, 1, 'L');
+$pdf->Ln(5);
+$pdf->SetFont('Arial','',10);
+$pdf->MultiCell(0,6,'Amount in words: '.number_to_words_indian((int)round($consolidated_total)).' Rupees Only',0,'L');
 
-        // No. of candidates x rate
-        $pdfRef->SetXY($x + $w[0] + $w[1] + $w[2], $y);
-        $pdfRef->MultiCell($w[3], 6, $cand_str, 1, 'C');
+// Footer
+$pdf->Ln(10);
+$pdf->SetFont('Arial','',10);
+$pdf->Cell(60,6,'Internal Examiner',0,0);
+$pdf->Cell(70,6,'Head Of The Department',0,0,'C');
+$pdf->Cell(0,6,'Signature of the Dean',0,1,'R');
+$pdf->Ln(8);
+$pdf->Cell(60,6,'Checked by:',0,0);
+$pdf->Cell(70,6,'Verified by:',0,0,'C');
+$pdf->Cell(0,6,'Controller of Examinations',0,1,'R');
 
-        // Amount
-        $pdfRef->SetXY($x + $w[0] + $w[1] + $w[2] + $w[3], $y);
-        $pdfRef->MultiCell($w[4], 6, 'Rs. ' . number_format($amount, 2), 1, 'R');
+// Output final PDF
+$filename = "Remuneration_{$course_id}_Sec{$section}_Dept{$dept}_{$AY}_Consolidated.pdf";
+header('Content-Type: application/pdf');
+header('Content-Disposition: inline; filename="'.$filename.'"');
+$pdf->Output('I', $filename);
+exit();
 
-        // Move Y to next line after the tallest cell
-        $pdfRef->SetY(max($y + 6, $pdfRef->GetY()));
-        // small gap
-        $pdfRef->Ln(0);
-    };
-
-    $sl = 1;
-    $addRow($pdf, $w, $sl++, $exam1['name'] ?: $examiner1_id, $exam1['designation'] ?: 'Examiner', "{$total_candidates} x Rs. " . number_format($RATE_EXAM,2), $amt_exam1);
-    $addRow($pdf, $w, $sl++, $exam2['name'] ?: $examiner2_id, $exam2['designation'] ?: 'Examiner', "{$total_candidates} x Rs. " . number_format($RATE_EXAM,2), $amt_exam2);
-    $addRow($pdf, $w, $sl++, $tech_name, 'Lab Technician', "{$total_candidates} x Rs. " . number_format($RATE_TECH,2), $amt_tech);
-    $addRow($pdf, $w, $sl++, $deo_name, 'Clerk / DEO', "{$total_candidates} x Rs. " . number_format($RATE_DEO,2), $amt_deo);
-    $addRow($pdf, $w, $sl++, $peon_name, 'Attender / Peon', "{$total_candidates} x Rs. " . number_format($RATE_PEON,2), $amt_peon);
-
-    // ----- Grand Total -----
-    $consolidated_total = $amt_exam1 + $amt_exam2 + $staff_total;
-    $pdf->SetFont('Arial','B',10);
-    $pdf->Cell($w[0]+$w[1]+$w[2]+$w[3],8,'Grand Total:',1,0,'R');
-    $pdf->Cell($w[4],8,'Rs. '.number_format($consolidated_total,2),1,1,'R');
-
-    $pdf->Ln(4);
-    $pdf->SetFont('Arial','',10);
-    $pdf->Cell(0,6,'Amount in words: '.number_to_words_indian((int)round($consolidated_total)).' Rupees Only',0,1);
-    $pdf->Ln(10);
-
-    // Footer signatures
-    $pdf->Cell(60,6,'Internal Examiner',0,0);
-    $pdf->Cell(70,6,'Head Of The Department',0,0,'C');
-    $pdf->Cell(0,6,'Signature of the Dean',0,1,'R');
-
-    // Extra sign lines
-    $pdf->Ln(8);
-    $pdf->Cell(60,6,'Checked by:',0,0);
-    $pdf->Cell(70,6,'Verified by:',0,0,'C');
-    $pdf->Cell(0,6,'Controller of Examinations',0,1,'R');
-
-    // Output
-    $filename = "Remuneration_{$course_id}_Sec{$section}_Dept{$dept}_{$AY}.pdf";
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: inline; filename="'.$filename.'"');
-    $pdf->Output('I', $filename);
-    exit();
 }
 
 http_response_code(405);
