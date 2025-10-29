@@ -2,7 +2,7 @@
 /*******************************************************
  * generate_remuneration_section.php
  * Generates section-level remuneration (Examiner1, Examiner2, Staff, Consolidated)
- * Fully production-ready with consistent SAHE layout
+ * Production-ready single-file version (keeps original behavior, stores staff IDs)
  *******************************************************/
 declare(strict_types=1);
 session_start();
@@ -124,135 +124,6 @@ function number_to_words_indian(int $num): string {
 /* ---------- MAIN ---------- */
 $logged_faculty = require_login();
 
-/* ---------- GET (Render Form) ---------- */
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $course_id = trim((string)($_GET['course_id'] ?? ''));
-    $section   = trim((string)($_GET['section'] ?? ''));
-    $dept      = trim((string)($_GET['dept'] ?? ''));
-    $AY        = trim((string)($_GET['AY'] ?? ''));
-
-    if ($course_id==='' || $section==='' || $dept==='' || $AY==='') {
-        http_response_code(400);
-        exit('Missing parameters.');
-    }
-
-    $fvc = require_course_authorized($conn, $logged_faculty, $course_id, $section, $dept, $AY);
-    $dept_int = (int)$dept;
-
-    $st = $conn->prepare("SELECT 1 FROM marks WHERE course_id=? AND section=? AND dept=? AND AY=? AND is_finalized=1 LIMIT 1");
-    $st->bind_param('ssis', $course_id, $section, $dept_int, $AY);
-    $st->execute();
-    $ok = $st->get_result()->num_rows > 0;
-    $st->close();
-    if (!$ok) exit("<h3>Marks not finalized yet. Remuneration can only be generated after finalization.</h3>");
-
-    $st = $conn->prepare("SELECT name, type FROM courses WHERE course_id=? LIMIT 1");
-    $st->bind_param('s', $course_id);
-    $st->execute();
-    $course = $st->get_result()->fetch_assoc() ?: ['name'=>'','type'=>''];
-    $st->close();
-
-    $examiner1_id = (string)($fvc['faculty_id'] ?? '');
-    $examiner2_id = (string)($fvc['ext_faculty_id'] ?? $examiner1_id);
-    $exam1 = get_faculty_by_id($conn, $examiner1_id);
-    $exam2 = get_faculty_by_id($conn, $examiner2_id);
-
-    $total_candidates = get_total_candidates_section($conn, $course_id, $section, $dept, $AY);
-    $csrf = csrf_get();
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Generate Remuneration</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-<style>
-body{background-color:#f7f9fc;}
-.sidebar a{color:white;text-decoration:none;}
-.sidebar a:hover{text-decoration:underline;}
-</style>
-</head>
-<body class="d-flex flex-column min-vh-100">
-<header class="bg-primary text-white text-center py-3">
-    <h2>SIDDHARTHA ACADEMY OF HIGHER EDUCATION</h2>
-    <h3>(Deemed to be University)</h3>
-    <h2>Generate Remuneration (Section-wise)</h2>
-</header>
-
-<div class="container-fluid d-flex flex-grow-1">
-    <div class="row w-100 flex-grow-1">
-        <nav class="col-md-3 col-lg-2 bg-secondary text-white p-3 sidebar">
-            <?php include('faculty_menu.php'); ?>
-        </nav>
-
-        <div class="col-md-9 col-lg-10 text-center" id="content-area">
-            <div class="container mt-4">
-                <h4 class="mb-3 text-dark">Remuneration Entry for <?= e($course['name']) ?> (Sec <?= e($section) ?>)</h4>
-                <p><strong>Dept:</strong> <?= e($dept) ?> &nbsp; | &nbsp; <strong>AY:</strong> <?= e($AY) ?></p>
-                <p><strong>Total Candidates:</strong> <?= e((string)$total_candidates) ?></p>
-                <hr>
-
-                <form method="post" target="_blank" autocomplete="off" novalidate class="text-left w-75 mx-auto">
-                    <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
-                    <input type="hidden" name="course_id" value="<?= e($course_id) ?>">
-                    <input type="hidden" name="section" value="<?= e($section) ?>">
-                    <input type="hidden" name="dept" value="<?= e($dept) ?>">
-                    <input type="hidden" name="AY" value="<?= e($AY) ?>">
-                    <input type="hidden" name="examiner1_id" value="<?= e($examiner1_id) ?>">
-                    <input type="hidden" name="examiner2_id" value="<?= e($examiner2_id) ?>">
-
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label>Examiner 1</label>
-                            <input type="text" class="form-control" value="<?= e($exam1['name']).' — '.e($exam1['designation']) ?>" readonly>
-                        </div>
-                        <div class="form-group col-md-6">
-                            <label>Examiner 2</label>
-                            <input type="text" class="form-control" value="<?= e($exam2['name']).' — '.e($exam2['designation']) ?>" readonly>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group col-md-4 position-relative">
-                            <label>Skilled Assistant / Lab Technician</label>
-                            <input type="text" id="tech_name" name="tech_name" class="form-control" required placeholder="Start typing name...">
-                        </div>
-                        <div class="form-group col-md-4 position-relative">
-                            <label>DEO / Clerk</label>
-                            <input type="text" id="deo_name" name="deo_name" class="form-control" required placeholder="Start typing name...">
-                        </div>
-                        <div class="form-group col-md-4 position-relative">
-                            <label>Attender / Peon</label>
-                            <input type="text" id="peon_name" name="peon_name" class="form-control" required placeholder="Start typing name...">
-                        </div>
-                    </div>
-
-                    <div class="alert alert-info small">Examiner details are auto-fetched. Choose staff manually.</div>
-
-                    <div class="text-center">
-                        <button type="submit" name="generate_pdf" class="btn btn-primary">Generate Remuneration (Sec)</button>
-                        <a href="select_section_remuneration.php" class="btn btn-light">Back</a>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<footer class="bg-primary text-white text-center py-2 mt-auto">
-    <p>© <?= date('Y') ?> - Developed by Dept. of IT</p>
-</footer>
-
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
-<?php
-exit();
-}
-
 /* ---------- POST (Generate PDF) ---------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     global $conn;
@@ -265,17 +136,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $AY           = trim((string)($_POST['AY'] ?? ''));
     $examiner1_id = trim((string)($_POST['examiner1_id'] ?? ''));
     $examiner2_id = trim((string)($_POST['examiner2_id'] ?? ''));
-    $tech_name    = trim((string)($_POST['tech_name'] ?? ''));
-    $deo_name     = trim((string)($_POST['deo_name'] ?? ''));
-    $peon_name    = trim((string)($_POST['peon_name'] ?? ''));
 
-    if ($course_id==='' || $section==='' || $dept==='' || $AY==='' || $tech_name==='' || $deo_name==='' || $peon_name==='') {
+    // IDs from hidden fields
+    $tech_id = trim((string)($_POST['tech_id'] ?? ''));
+    $deo_id  = trim((string)($_POST['deo_id'] ?? ''));
+    $peon_id = trim((string)($_POST['peon_id'] ?? ''));
+
+    if ($course_id==='' || $section==='' || $dept==='' || $AY==='') {
         exit('Missing required fields.');
     }
-    $dept_int = (int)$dept;
+    if ($tech_id==='' || $deo_id==='' || $peon_id==='') {
+        exit('Please select valid staff from the suggestion list.');
+    }
 
+    $dept_int = (int)$dept;
     require_course_authorized($conn, $faculty, $course_id, $section, $dept, $AY);
 
+    // Ensure marks finalized
     $st = $conn->prepare("SELECT 1 FROM marks WHERE course_id=? AND section=? AND dept=? AND AY=? AND is_finalized=1 LIMIT 1");
     $st->bind_param('ssis', $course_id, $section, $dept_int, $AY);
     $st->execute();
@@ -287,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $total_candidates = get_total_candidates_section($conn, $course_id, $section, $dept, $AY);
 
-    // Insert/Update remuneration
+    // Insert / Update remuneration using *_id columns
     $chk = $conn->prepare("SELECT id FROM remuneration WHERE course_id=? AND section=? AND dept=? AND AY=? LIMIT 1");
     $chk->bind_param('ssis', $course_id, $section, $dept_int, $AY);
     $chk->execute();
@@ -295,25 +172,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $chk->close();
 
     if ($exists) {
-        $upd = $conn->prepare("UPDATE remuneration 
-            SET faculty_id=?, examiner1_id=?, examiner2_id=?, tech_name=?, deo_name=?, peon_name=?, total_candidates=?, updated_at=NOW()
+        $upd = $conn->prepare("UPDATE remuneration
+            SET faculty_id=?, examiner1_id=?, examiner2_id=?, tech_id=?, deo_id=?, peon_id=?, total_candidates=?, updated_at=NOW()
             WHERE course_id=? AND section=? AND dept=? AND AY=?");
+        if (!$upd) { http_response_code(500); exit('DB prepare error (update).'); }
         $upd->bind_param('ssssssissis',
             $faculty, $examiner1_id, $examiner2_id,
-            $tech_name, $deo_name, $peon_name,
+            $tech_id, $deo_id, $peon_id,
             $total_candidates, $course_id, $section, $dept_int, $AY);
-        $upd->execute(); $upd->close();
+        $upd->execute();
+        $upd->close();
     } else {
-        $ins = $conn->prepare("INSERT INTO remuneration(course_id, section, dept, AY, faculty_id, examiner1_id, examiner2_id, tech_name, deo_name, peon_name, total_candidates, created_at)
+        $ins = $conn->prepare("INSERT INTO remuneration
+            (course_id, section, dept, AY, faculty_id, examiner1_id, examiner2_id, tech_id, deo_id, peon_id, total_candidates, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+        if (!$ins) { http_response_code(500); exit('DB prepare error (insert).'); }
         $ins->bind_param('ssisssssssi',
             $course_id, $section, $dept_int, $AY,
             $faculty, $examiner1_id, $examiner2_id,
-            $tech_name, $deo_name, $peon_name, $total_candidates);
-        $ins->execute(); $ins->close();
+            $tech_id, $deo_id, $peon_id, $total_candidates);
+        $ins->execute();
+        $ins->close();
     }
 
-    // Fetch data for PDF
+    // Fetch course and names for PDF
     $st = $conn->prepare("SELECT name FROM courses WHERE course_id=? LIMIT 1");
     $st->bind_param('s', $course_id);
     $st->execute();
@@ -322,6 +204,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $exam1 = get_faculty_by_id($conn, $examiner1_id);
     $exam2 = get_faculty_by_id($conn, $examiner2_id);
+    $tech  = get_faculty_by_id($conn, $tech_id);
+    $deo   = get_faculty_by_id($conn, $deo_id);
+    $peon  = get_faculty_by_id($conn, $peon_id);
+
+    $tech_name = $tech['name'] ?: $tech_id;
+    $deo_name  = $deo['name']  ?: $deo_id;
+    $peon_name = $peon['name'] ?: $peon_id;
 
     // Rates
     $RATE_EXAM = 20.00; $MIN_EXAM = 200.00;
@@ -355,7 +244,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdf->SetFont('Arial', '', 8.5);
     $pdf->Cell(0, 5, 'Kanuru, Vijayawada - 520007, A.P.  www.vrsiddhartha.ac.in', 0, 1, 'C');
     $pdf->Ln(10);
-
+$pdf->SetXY(-72, 17);
+        $pdf->SetFont('Arial', '', 8.5);
+        $pdf->Cell(0, 4, '91 866 2582333', 0, 2, 'R');
+        $pdf->Cell(0, 4, '866 2582334', 0, 2, 'R');
+        $pdf->Cell(0, 4, '866 2584930', 0, 1, 'R');
+$pdf->Ln(10);
     // Title
     $pdf->SetFont('Arial','B',12);
     $pdf->Cell(0,7,'CONSOLIDATED REMUNERATION BILL (EXAMINERS + STAFF)',0,1,'C');
@@ -418,6 +312,181 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
-http_response_code(405);
-echo "Method not allowed.";
+/* ---------- GET (Render Form) ---------- */
+$course_id = trim((string)($_GET['course_id'] ?? ''));
+$section   = trim((string)($_GET['section'] ?? ''));
+$dept      = trim((string)($_GET['dept'] ?? ''));
+$AY        = trim((string)($_GET['AY'] ?? ''));
+
+if ($course_id==='' || $section==='' || $dept==='' || $AY==='') {
+    http_response_code(400);
+    exit('Missing parameters.');
+}
+
+$fvc = require_course_authorized($conn, $logged_faculty, $course_id, $section, $dept, $AY);
+$dept_int = (int)$dept;
+
+$st = $conn->prepare("SELECT 1 FROM marks WHERE course_id=? AND section=? AND dept=? AND AY=? AND is_finalized=1 LIMIT 1");
+$st->bind_param('ssis', $course_id, $section, $dept_int, $AY);
+$st->execute();
+$ok = $st->get_result()->num_rows > 0;
+$st->close();
+if (!$ok) exit("<h3>Marks not finalized yet. Remuneration can only be generated after finalization.</h3>");
+
+$st = $conn->prepare("SELECT name, type FROM courses WHERE course_id=? LIMIT 1");
+$st->bind_param('s', $course_id);
+$st->execute();
+$course = $st->get_result()->fetch_assoc() ?: ['name'=>'','type'=>''];
+$st->close();
+
+$examiner1_id = (string)($fvc['faculty_id'] ?? '');
+$examiner2_id = (string)($fvc['ext_faculty_id'] ?? $examiner1_id);
+$exam1 = get_faculty_by_id($conn, $examiner1_id);
+$exam2 = get_faculty_by_id($conn, $examiner2_id);
+
+$total_candidates = get_total_candidates_section($conn, $course_id, $section, $dept, $AY);
+$csrf = csrf_get();
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Generate Remuneration</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+<style>
+body{background-color:#f7f9fc;}
+.sidebar a{color:white;text-decoration:none;}
+.sidebar a:hover{text-decoration:underline;}
+.ui-autocomplete { max-height:200px; overflow-y:auto; overflow-x:hidden; z-index:1051 !important; font-size:0.95rem; }
+</style>
+</head>
+<body class="d-flex flex-column min-vh-100">
+<header class="bg-primary text-white text-center py-3">
+    <h2>SIDDHARTHA ACADEMY OF HIGHER EDUCATION</h2>
+    <h3>(Deemed to be University)</h3>
+    <h2>Generate Remuneration (Section-wise)</h2>
+</header>
+
+<div class="container-fluid d-flex flex-grow-1">
+    <div class="row w-100 flex-grow-1">
+        <nav class="col-md-3 col-lg-2 bg-secondary text-white p-3 sidebar">
+            <?php include('faculty_menu.php'); ?>
+        </nav>
+
+        <div class="col-md-9 col-lg-10 text-center" id="content-area">
+            <div class="container mt-4">
+                <h4 class="mb-3 text-dark">Remuneration Entry for <?= e($course['name']) ?> (Sec <?= e($section) ?>)</h4>
+                <p><strong>Dept:</strong> <?= e($dept) ?> &nbsp; | &nbsp; <strong>AY:</strong> <?= e($AY) ?></p>
+                <p><strong>Total Candidates:</strong> <?= e((string)$total_candidates) ?></p>
+                <hr>
+
+                <form method="post" target="_blank" autocomplete="off" novalidate class="text-left w-75 mx-auto">
+                    <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                    <input type="hidden" name="course_id" value="<?= e($course_id) ?>">
+                    <input type="hidden" name="section" value="<?= e($section) ?>">
+                    <input type="hidden" name="dept" value="<?= e($dept) ?>">
+                    <input type="hidden" name="AY" value="<?= e($AY) ?>">
+                    <input type="hidden" name="examiner1_id" value="<?= e($examiner1_id) ?>">
+                    <input type="hidden" name="examiner2_id" value="<?= e($examiner2_id) ?>">
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Examiner 1</label>
+                            <input type="text" class="form-control" value="<?= e($exam1['name']).' — '.e($exam1['designation']) ?>" readonly>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Examiner 2</label>
+                            <input type="text" class="form-control" value="<?= e($exam2['name']).' — '.e($exam2['designation']) ?>" readonly>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                       <div class="form-group col-md-4 position-relative">
+    <label>Skilled Assistant / Lab Technician</label>
+    <input type="text" id="tech_name" class="form-control" required placeholder="Start typing name...">
+    <input type="hidden" id="tech_id" name="tech_id">
+</div>
+
+<div class="form-group col-md-4 position-relative">
+    <label>DEO / Clerk</label>
+    <input type="text" id="deo_name" class="form-control" required placeholder="Start typing name...">
+    <input type="hidden" id="deo_id" name="deo_id">
+</div>
+
+<div class="form-group col-md-4 position-relative">
+    <label>Attender / Peon</label>
+    <input type="text" id="peon_name" class="form-control" required placeholder="Start typing name...">
+    <input type="hidden" id="peon_id" name="peon_id">
+</div>
+
+                    </div>
+
+                    <div class="alert alert-info small">Examiner details are auto-fetched. Choose staff manually.</div>
+
+                    <div class="text-center">
+                        <button type="submit" name="generate_pdf" class="btn btn-primary">Generate Remuneration (Sec)</button>
+                        <a href="select_section_remuneration.php" class="btn btn-light">Back</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="bg-primary text-white text-center py-2 mt-auto">
+    <p>© <?= date('Y') ?> - Developed by Dept. of IT</p>
+</footer>
+
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<!-- jQuery UI (for autocomplete) -->
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+
+<script>
+$(function() {
+    function initFacultyAutocomplete(nameInputId, idHiddenId) {
+        const $nameInput = $("#" + nameInputId);
+        const $idHidden = $("#" + idHiddenId);
+
+        $nameInput.autocomplete({
+            minLength: 2,
+            delay: 300,
+            source: function(request, response) {
+                $.ajax({
+                    url: "faculty_search.php",
+                    dataType: "json",
+                    data: { term: request.term },
+                    success: function(data) {
+                        response(data);
+                    },
+                    error: function() {
+                        response([]);
+                    }
+                });
+            },
+            select: function(event, ui) {
+                $nameInput.val(ui.item.value);
+                $idHidden.val(ui.item.id || "");  // store faculty_id
+                return false;
+            }
+        }).autocomplete("instance")._renderItem = function(ul, item) {
+            return $("<li>")
+                .append("<div>" + item.label + "</div>")
+                .appendTo(ul);
+        };
+    }
+
+    initFacultyAutocomplete("tech_name", "tech_id");
+    initFacultyAutocomplete("deo_name", "deo_id");
+    initFacultyAutocomplete("peon_name", "peon_id");
+});
+</script>
+
+
+
+</body>
+</html>
