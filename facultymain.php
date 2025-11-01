@@ -65,11 +65,9 @@ body {
 
 <!-- ✅ Same Footer -->
 <footer class="bg-primary text-white text-center py-2 mt-auto">
-    <p>© 2024 - Developed by Dept. of IT</p>
+    <p>© 2024 - Developed by Dept. of IT (Dr. C S Pavan kumar) - 8985670186</p>
 </footer>
+<?php include 'includes/scripts.php'; ?>
 
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>

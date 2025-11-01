@@ -21,19 +21,25 @@
         <div class="modal-content">
             <span class="close-btn" onclick="closeLoginForm()">&times;</span>
             <h2>Login</h2>
-            <form action="logincheck.php" method="post">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
+            <form action="logincheck.php" method="post" class="login-form">
+    <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" required>
+    </div>
 
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
+    <div class="form-group">
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required>
+    </div>
 
-                <button type="submit">Submit</button>
-                <button type="button" onclick="window.location.href='google_login.php'" 
-                        style="background-color:#4285F4; color: #fff;">
-                    Login via Gmail
-                </button>
-            </form>
+    <div class="button-group">
+        <button type="submit">Submit</button>
+        <button type="button" class="gmail-btn" onclick="window.location.href='google_login.php'">
+            Login via Gmail
+        </button>
+    </div>
+</form>
+
         </div>
     </div>
 
